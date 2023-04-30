@@ -1,5 +1,6 @@
 import pickle
 
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -8,6 +9,7 @@ import fire
 import pygame as pg
 
 from ants import LangtonsAnt, Colony, half_pi
+from game_of_life import GameOfLife
 
 
 white = 255, 240, 200
@@ -22,9 +24,24 @@ class ColonyRenderer(Colony):
     cell_size = 5
 
     ant_colors = [
-        (255, 10, 10),
         (10, 10, 255),
+        (255, 10, 10),
     ]
+
+    def __init__(self, init_state=None, ants=None):
+        super().__init__(init_state, ants)
+        self._do_path_tracing = False
+        self._path_traces = defaultdict(list)
+
+    @property
+    def do_path_tracing(self):
+        return self._do_path_tracing
+
+    @do_path_tracing.setter
+    def do_path_tracing(self, value):
+        if value and not self._do_path_tracing:
+            self._path_traces = defaultdict(list)
+        self._do_path_tracing = value
 
     def draw(self, screen):
         screen.fill(self.board_color)
@@ -38,7 +55,7 @@ class ColonyRenderer(Colony):
             ]
             pg.draw.rect(screen, self.cell_color, rect)
 
-        for ant in self.ants:
+        for i, ant in enumerate(self.ants):
             x, y = ant.position
             rect = [
                 self.cell_size * x,
@@ -46,8 +63,27 @@ class ColonyRenderer(Colony):
                 self.cell_size,
                 self.cell_size,
             ]
-            color = self.ant_colors[int(ant.white_turn_right)]
+            color = self.ant_colors[i]
             pg.draw.rect(screen, color, rect)
+
+            if self._do_path_tracing:
+                self._path_traces[i].append(((x + 0.5), (y + 0.5)))
+
+        if self._do_path_tracing:
+            for i, path in self._path_traces.items():
+                if len(path) < 2:
+                    continue
+                color = self.ant_colors[i]
+                x, y = path[0]
+                for next_x, next_y in path[1:]:
+                    pg.draw.line(
+                        screen,
+                        color,
+                        (self.cell_size * x, self.cell_size * y),
+                        (self.cell_size * next_x, self.cell_size * next_y),
+                        width=int(self.cell_size / 3),
+                    )
+                    x, y = next_x, next_y
 
 
 def main(
@@ -57,6 +93,9 @@ def main(
     init_state: Optional[str] = None,
     step_by_step: bool = False,
     debug: bool = False,
+    do_check_on_highway: bool = True,
+    # do_check_my_init_pattern: bool = False,
+    with_game_of_life: bool = False,
 ):
     pg.init()
 
@@ -77,6 +116,11 @@ def main(
         )
     else:
         colony, step = init_colony_state(init_state)
+
+    game_of_life = None
+    if with_game_of_life:
+        game_of_life = GameOfLife()
+        game_of_life.live_cells = colony.board
 
     ##### Copy init cells to store as non-visited
     import copy
@@ -109,7 +153,6 @@ def main(
 
     do_next = not step_by_step
 
-    do_check_on_highway = True
     ant_directions = []
 
     while not done:
@@ -138,7 +181,10 @@ def main(
                     colony.cell_size -= 2
                 elif e.key == pg.K_RETURN:
                     do_next = True
-                elif e.key == pg.K_s:
+                elif e.key == pg.K_c and step_by_step:
+                    step_by_step = False
+                    do_next = True
+                elif e.key == pg.K_x:
                     print(step, end=" ")
                 elif e.key == pg.KMOD_LCTRL | pg.K_s:
                     if debug:
@@ -164,15 +210,32 @@ def main(
             print(step, end=" ")
 
         if do_next:
-            ant_directions.append(colony.ants[0].dir_as_int)
             colony.next()
             step += 1
             do_next = not step_by_step
 
-            if do_check_on_highway and check_on_highway(ant_directions):
-                print(f"First detected the ant on the highway pattern, step={step}")
-                pause = True
-                do_check_on_highway = False
+            # if do_check_my_init_pattern and check_my_init_pattern(colony):
+            #     print(
+            #         f"Detected my init pattern like s8 before the ant on the highway pattern, step={step}"
+            #     )
+            #     pause = True
+
+            if do_check_on_highway:
+                ant_directions.append(colony.ants[0].dir_as_int)
+                if check_on_highway_pattern(ant_directions):
+                    colony.do_path_tracing = True
+                    if len(ant_directions) == len(highway_pattern_leftup):
+                        print(
+                            f"First detected the ant on the highway pattern, step={step}"
+                        )
+                        pause = True
+                        do_check_on_highway = False
+                else:
+                    colony.do_path_tracing = False
+                    ant_directions = []
+
+            if game_of_life is not None and step % 100 == 0:
+                game_of_life.next()
 
         nonvisited_init_cells = nonvisited_init_cells & colony.board
 
@@ -222,7 +285,7 @@ def init_colony_state(init_state):
                     (41, 42),  # required
                     (40, 45),  # required
                     (39, 43),  # required
-                    (40, 44),  # not required but faster to get to the highway
+                    (40, 44),  # not required but faster to get to the highway pattern
                     (39, 42),  # required
                     (40, 41),  # required
                 },
@@ -238,7 +301,7 @@ def init_colony_state(init_state):
                     (41, 42),  # required
                     (40, 45),  # required
                     (39, 43),  # required
-                    (40, 44),  # not required but faster to get to the highway
+                    (40, 44),  # not required but faster to get to the highway pattern
                     (39, 42),  # required
                     (40, 41),  # required
                 },
@@ -335,11 +398,32 @@ def init_colony_state(init_state):
     return colony, 0
 
 
-def check_on_highway(ant_directions):
-    pattern = "232103032321030123232103032101230303210101210123032303210121010121232323032101212321030103212323210303012321030323210301232321030321012303032101012101230323032101210101212323230321012123210301032123232103030123210303232103012323210303210123030321010121012303230321012101012123232303210121232103010321232321030301"
-    ant_dirs_str = "".join(ant_directions)
-    return pattern in ant_dirs_str
+highway_pattern_leftup = "232103032321030123232103032101230303210101210123032303210121010121232323032101212321030103212323210303012321030323210301232321030321012303032101012101230323032101210101212323230321012123210301032123232103030123210303232103012323210303210123030321010121012303230321012101012123232303210121232103010321232321030301"
 
+
+def check_on_highway_pattern(ant_directions):
+    ant_dirs_str = "".join(ant_directions)
+    return ant_dirs_str == highway_pattern_leftup[: len(ant_dirs_str)]
+
+
+# def check_my_init_pattern(colony):
+#     def get_my_init_pattern(x, y):
+#         return [
+#             (x + 1, y), (x + 1, y - 1),
+#             (x, y - 2), (x + 2, y - 2),
+#             (x, y - 3), (x + 2, y - 3),
+#             (x + 1, y - 4), (x + 2, y - 5),
+#         ]
+
+#     board = colony.board
+#     for ant in colony.ants:
+#         x, y = ant.position
+#         o = ant.orientation
+#         if o != 3 * half_pi:
+#             break
+#         res = [cell in board for cell in get_my_init_pattern(x, y)]
+#         return all(res)
+#     return False
 
 if __name__ == "__main__":
     fire.Fire(main)
