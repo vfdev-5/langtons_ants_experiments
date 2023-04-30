@@ -5,9 +5,9 @@ half_pi = math.pi * 0.5
 
 
 class LangtonsAnt:
-    def __init__(self, x=0, y=0, white_turn_right=True):
+    def __init__(self, x=0, y=0, orientation=half_pi, white_turn_right=True):
         self.position = [x, y]
-        self.orientation = half_pi
+        self.orientation = orientation
         self.white_turn_right = white_turn_right
 
     def next(self, color):
@@ -17,13 +17,31 @@ class LangtonsAnt:
             self.orientation += half_pi if self.white_turn_right else -half_pi
         self.orientation %= 2 * math.pi
         dx, dy = int(math.cos(self.orientation)), int(math.sin(self.orientation))
-        # DEBUG:
-        # print(self.position[0], self.position[1], self.orientation, dx, dy)
         self.position[0] += dx
         self.position[1] += dy
 
     def __repr__(self):
         return f"LangtonsAnt({self.position}, {self.orientation}, white_turn_right={self.white_turn_right})"
+
+    @property
+    def direction(self):
+        if self.orientation == 0:
+            return "right"
+        if self.orientation == half_pi:
+            return "up"
+        if self.orientation == 2 * half_pi:
+            return "left"
+        return "down"
+
+    @property
+    def dir_as_int(self):
+        if self.orientation == 0:
+            return "0"
+        if self.orientation == half_pi:
+            return "1"
+        if self.orientation == 2 * half_pi:
+            return "2"
+        return "3"
 
 
 class Colony:
