@@ -94,7 +94,6 @@ def main(
     step_by_step: bool = False,
     debug: bool = False,
     do_check_on_highway: bool = True,
-    # do_check_my_init_pattern: bool = False,
     with_game_of_life: bool = False,
 ):
     pg.init()
@@ -213,12 +212,6 @@ def main(
             colony.next()
             step += 1
             do_next = not step_by_step
-
-            # if do_check_my_init_pattern and check_my_init_pattern(colony):
-            #     print(
-            #         f"Detected my init pattern like s8 before the ant on the highway pattern, step={step}"
-            #     )
-            #     pause = True
 
             if do_check_on_highway:
                 ant_directions.append(colony.ants[0].dir_as_int)
@@ -405,25 +398,6 @@ def check_on_highway_pattern(ant_directions):
     ant_dirs_str = "".join(ant_directions)
     return ant_dirs_str == highway_pattern_leftup[: len(ant_dirs_str)]
 
-
-# def check_my_init_pattern(colony):
-#     def get_my_init_pattern(x, y):
-#         return [
-#             (x + 1, y), (x + 1, y - 1),
-#             (x, y - 2), (x + 2, y - 2),
-#             (x, y - 3), (x + 2, y - 3),
-#             (x + 1, y - 4), (x + 2, y - 5),
-#         ]
-
-#     board = colony.board
-#     for ant in colony.ants:
-#         x, y = ant.position
-#         o = ant.orientation
-#         if o != 3 * half_pi:
-#             break
-#         res = [cell in board for cell in get_my_init_pattern(x, y)]
-#         return all(res)
-#     return False
 
 if __name__ == "__main__":
     fire.Fire(main)
